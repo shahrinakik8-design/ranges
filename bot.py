@@ -496,7 +496,7 @@ def record_key(record):
         "range": record.get("range"),
         "sender": record.get("sender"),
         "country": record.get("country"),
-        "operator": record.get("operator")
+        "operator": record.get("operator"),
         "message": record.get("message"),
     }
 
@@ -566,6 +566,9 @@ def format_console_message(record):
             record.get("at_ms")
         )
     )
+    message = tg_escape(
+    record.get("message") or "No message"
+    )
 
     return (
         "📩 <b>NEW ACTIVITY</b>\n"
@@ -578,6 +581,7 @@ def format_console_message(record):
         f"🌍 <b>Country:</b> {country}\n"
         f"📡 <b>Operator:</b> {operator}\n"
         f"🕒 <b>Time:</b> <code>{time_text}</code>"
+        f"🕒 <b>Message:</b> <code>{message}</code>"
     )
 
 # =========================================================
