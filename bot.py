@@ -230,11 +230,12 @@ def extract_live_entries(data):
                 or value.isdigit()
             ):
 
-                entries.append({
-                    "range": value,
-                    "sender": "",
-                    "country": "",
-                    "operator": ""
+                 entries.append({
+            "range": obj.get("range") or "",
+            "sender": obj.get("sender") or "",
+            "country": obj.get("country") or "",
+            "operator": obj.get("operator") or "",
+            "message": obj.get("message") or ""
                 })
 
     walk(data)
@@ -284,7 +285,7 @@ def format_live_range_message(entry):
         f"📨 <b>Service:</b> {sender}\n"
         f"🌍 <b>Country:</b> {country}\n"
         f"📡 <b>Operator:</b> {operator}\n\n"
-         f"📡 <b>message:</b> {operator}\n\n"
+         f"📡 <b>message:</b> {message}\n\n"
 
         "✨ <i>New live range detected</i>"
     )
