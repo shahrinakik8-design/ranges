@@ -471,6 +471,10 @@ def extract_console_records(data):
                 or row.get("network")
                 or ""
             )
+            "message": (
+                row.get("message")
+                or ""
+            )
         }
 
         if not any(record.values()):
