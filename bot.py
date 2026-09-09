@@ -591,17 +591,15 @@ def format_console_message(record):
     )
 
     return (
-        "📩 <b>NEW ACTIVITY</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-
-        f"📋 <b>Range:</b>\n"
-        f"<code>{rng}</code>\n\n"
-
-        f"📨 <b>Service:</b> {sender}\n"
+        "✅ <b>NEW ACTIVITY</b>\n"
+        f"🔧 <b>Range:</b>"
+        f"<code>{rng}</code>\n"
+        f"⚙️ <b>Service:</b> {sender}\n"
         f"🌍 <b>Country:</b> {country}\n"
         f"📡 <b>Operator:</b> {operator}\n"
         f"🕒 <b>Time:</b> <code>{time_text}</code>\n"
-        f"📨 <b>Message:</b> <code>{message}</code>"
+        f"📨 <b>Full SMS ⤵️⤵️</b>\n"
+        f"<code>{message}</code>"
     )
 
 # =========================================================
