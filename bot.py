@@ -6,16 +6,20 @@ import requests
 # CONFIG
 # =========================
 
-API_KEY = os.getenv("ZEBRASMS_API_KEY", "PUT_NEW_API_KEY_HERE")
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "PUT_BOT_TOKEN_HERE")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "PUT_GROUP_CHAT_ID_HERE")
+API_KEY = os.getenv("ZEBRASMS_API_KEY", "")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 BASE_URL = "https://api.zebrasms.com/api/v1"
 
-# কত সেকেন্ড পরপর liveaccess check করবে
 CHECK_INTERVAL = 60
+SEND_DELAY = 3
 
-# চাইলে এখানে known range-এর country/service তথ্য রাখতে পারো
+
+# =========================
+# RANGE INFORMATION
+# =========================
+
 RANGE_INFO = {
     "2290163XXX": {
         "service": "Face-Book",
@@ -44,6 +48,7 @@ RANGE_INFO = {
 # =========================
 
 def send_telegram(text):
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     payload = {
@@ -51,28 +56,63 @@ def send_telegram(text):
         "text": text
     }
 
-    try:
-        r = requests.post(url, json=payload, timeout=20)
-        data = r.json()
+    while True:
 
-        if not data.get("ok"):
+        try:
+
+            response = requests.post(
+                url,
+                json=payload,
+                timeout=20
+            )
+
+            data = response.json()
+
+            # Success
+            if data.get("ok"):
+
+                print("Message sent successfully")
+
+                # Prevent Telegram rate limit
+                time.sleep(SEND_DELAY)
+
+                return True
+
+            # Rate limit
+            if data.get("error_code") == 429:
+
+                retry_after = (
+                    data.get("parameters", {})
+                    .get("retry_after", 5)
+                )
+
+                print(
+                    f"Telegram rate limited. "
+                    f"Waiting {retry_after}s..."
+                )
+
+                time.sleep(retry_after)
+
+                continue
+
+            # Other Telegram error
             print("Telegram error:", data)
 
             return False
 
-        print("Message sent successfully")
-        return True
+        except Exception as e:
 
-    except Exception as e:
-        print("Telegram request error:", e)
-        return False
+            print("Telegram request error:", e)
+
+            time.sleep(5)
 
 
 # =========================
-# LIVE ACCESS
+# ZEBRASMS LIVEACCESS
 # =========================
 
 def get_liveaccess():
+
     url = f"{BASE_URL}/publicapi/liveaccess"
 
     headers = {
@@ -80,22 +120,30 @@ def get_liveaccess():
     }
 
     try:
-        r = requests.get(
+
+        response = requests.get(
             url,
             headers=headers,
             timeout=20
         )
 
-        data = r.json()
+        data = response.json()
 
+        # API success check
         if data.get("meta", {}).get("code") != 0:
+
             print("API error:", data)
+
             return []
 
-        return data.get("data", {}).get("rows", [])
+        rows = data.get("data", {}).get("rows", [])
+
+        return rows
 
     except Exception as e:
+
         print("Liveaccess error:", e)
+
         return []
 
 
@@ -105,23 +153,21 @@ def get_liveaccess():
 
 def format_range_message(sender, range_name):
 
+    # Exact range information
     info = RANGE_INFO.get(
         range_name,
         {
-            "service": sender,
+            "service": sender.title(),
             "country": "Unknown 🌍"
         }
     )
 
-    service = info["service"]
-    country = info["country"]
-
     message = (
         "✅ New Active Range ✅\n"
-        f"⚙️ Service: {service}\n"
-        f"🌍 Country: {country}\n"
+        f"⚙️ Service: {info['service']}\n"
+        f"🌍 Country: {info['country']}\n"
         f"📊 Range: {range_name}\n"
-        "📩 Full SMS ⤵️⤵️"
+        "📩 SMS update available ⤵️⤵️"
     )
 
     return message
@@ -136,43 +182,98 @@ def main():
     print("Starting...")
     print("Live Range Monitor Started")
 
-    # প্রথমবারের ranges শুধু memory-তে রাখবে,
-    # যাতে bot চালু করলেই পুরোনো সব range spam না করে।
+    # Check configuration
+    if not API_KEY:
+
+        print("ERROR: ZEBRASMS_API_KEY is missing")
+
+        return
+
+    if not BOT_TOKEN:
+
+        print("ERROR: TELEGRAM_BOT_TOKEN is missing")
+
+        return
+
+    if not CHAT_ID:
+
+        print("ERROR: TELEGRAM_CHAT_ID is missing")
+
+        return
+
+    # =========================
+    # INITIAL LOAD
+    # =========================
+
     initial_rows = get_liveaccess()
 
     known_ranges = set()
 
     for row in initial_rows:
-        for range_name in row.get("ranges", []):
-            known_ranges.add(
-                (row.get("sender", ""), range_name)
+
+        sender = str(
+            row.get("sender", "")
+        ).strip().lower()
+
+        ranges = row.get("ranges", [])
+
+        for range_name in ranges:
+
+            range_name = str(
+                range_name
+            ).strip().upper()
+
+            if not range_name:
+                continue
+
+            key = (
+                sender,
+                range_name
             )
 
-    print(f"Loaded {len(known_ranges)} existing ranges")
+            known_ranges.add(key)
+
+    print(
+        f"Loaded {len(known_ranges)} existing ranges"
+    )
+
+    # =========================
+    # MONITOR LOOP
+    # =========================
 
     while True:
 
         try:
+
             rows = get_liveaccess()
 
             current_ranges = set()
 
             for row in rows:
 
-                sender = row.get("sender", "").strip()
+                sender = str(
+                    row.get("sender", "")
+                ).strip().lower()
 
-                for range_name in row.get("ranges", []):
+                ranges = row.get("ranges", [])
 
-                    range_name = range_name.strip()
+                for range_name in ranges:
+
+                    range_name = str(
+                        range_name
+                    ).strip().upper()
 
                     if not range_name:
                         continue
 
-                    key = (sender.lower(), range_name)
+                    key = (
+                        sender,
+                        range_name
+                    )
 
                     current_ranges.add(key)
 
-                    # নতুন range
+                    # New range
                     if key not in known_ranges:
 
                         print(
@@ -187,7 +288,7 @@ def main():
 
                         send_telegram(message)
 
-            # নতুন/current ranges মনে রাখবে
+            # Remember current ranges
             known_ranges.update(current_ranges)
 
             print(
@@ -196,10 +297,22 @@ def main():
             )
 
         except Exception as e:
-            print("Main loop error:", e)
+
+            print(
+                "Main loop error:",
+                e
+            )
+
+        print(
+            f"Next check in {CHECK_INTERVAL} seconds..."
+        )
 
         time.sleep(CHECK_INTERVAL)
 
+
+# =========================
+# START
+# =========================
 
 if __name__ == "__main__":
     main()
