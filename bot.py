@@ -271,7 +271,9 @@ def format_live_range_message(entry):
     operator = tg_escape(
         entry.get("operator") or "Unknown"
     )
-
+    message = tg_escape(
+        entry.get("message") or "Unknown"
+    )
     return (
         "🟢 <b>NEW LIVE RANGE</b>\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
@@ -282,6 +284,7 @@ def format_live_range_message(entry):
         f"📨 <b>Service:</b> {sender}\n"
         f"🌍 <b>Country:</b> {country}\n"
         f"📡 <b>Operator:</b> {operator}\n\n"
+         f"📡 <b>message:</b> {operator}\n\n"
 
         "✨ <i>New live range detected</i>"
     )
