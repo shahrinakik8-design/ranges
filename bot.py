@@ -470,7 +470,7 @@ def extract_console_records(data):
                 row.get("operator")
                 or row.get("network")
                 or ""
-            )
+            ),
             "message": (
                 row.get("message")
                 or ""
