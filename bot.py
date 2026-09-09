@@ -17,11 +17,16 @@ except ImportError:
 
 BASE_URL = "https://api.zebrasms.com/api/v1"
 
-API_KEY = os.getenv("ZEBRASMS_API_KEY")
-CONSOLE_TOKEN = os.getenv("ZEBRASMS_CONSOLE_TOKEN")
+API_KEY = (os.getenv("ZEBRASMS_API_KEY") or "").strip()
+CONSOLE_TOKEN = (os.getenv("ZEBRASMS_CONSOLE_TOKEN") or "").strip()
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_BOT_TOKEN = (
+    os.getenv("TELEGRAM_BOT_TOKEN") or ""
+).strip()
+
+TELEGRAM_CHAT_ID = (
+    os.getenv("TELEGRAM_CHAT_ID") or ""
+).strip()
 
 CHECK_INTERVAL = int(
     os.getenv("CHECK_INTERVAL", "5")
