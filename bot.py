@@ -22,7 +22,7 @@ CONSOLE_TOKEN = (os.getenv("ZEBRASMS_CONSOLE_TOKEN") or "").strip()
 
 TELEGRAM_BOT_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
 TELEGRAM_CHAT_ID = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
-NUMBER_BOT_URL = "https://t.me/@testbot_miinii_bot"
+NUMBER_BOT_URL = "@testbot_miinii_bot"
 MAIN_CHANNEL_URL = "https://t.me/"
 
 try:
