@@ -437,7 +437,7 @@ def extract_console_records(data):
                 or row.get("index")
             ),
 
-            "eat_ms": (
+            "at_ms": (
                 row.get("eat_ms")
                 or row.get("timestamp")
                 or row.get("created_at")
@@ -488,7 +488,7 @@ def record_key(record):
         return f"idx:{record['idx']}"
 
     safe_data = {
-        "eat_ms": record.get("eat_ms"),
+        "at_ms": record.get("at_ms"),
         "range": record.get("range"),
         "sender": record.get("sender"),
         "country": record.get("country"),
@@ -524,8 +524,12 @@ def format_console_message(record):
         record.get("country") or "Unknown"
     )
 
-    content = tg_escape(
-        record.get("content") or "No content"
+    operator = tg_escape(
+        record.get("operator") or "Unknown"
+    )
+
+    at_ms = tg_escape(
+        str(record.get("at_ms") or "Unknown")
     )
 
     return (
@@ -536,12 +540,10 @@ def format_console_message(record):
         f"<code>{rng}</code>\n\n"
 
         f"📨 <b>Service:</b> {sender}\n"
-        f"🌍 <b>Country:</b> {country}\n\n"
-
-        f"📝 <b>Content:</b>\n"
-        f"<code>{content}</code>"
+        f"🌍 <b>Country:</b> {country}\n"
+        f"📡 <b>Operator:</b> {operator}\n"
+        f"🕒 <b>Time:</b> <code>{at_ms}</code>"
     )
-
 
 # =========================================================
 # CONSOLE REQUEST
