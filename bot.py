@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import html
 import hashlib
 import requests
 
@@ -31,7 +32,7 @@ except ValueError:
 
 
 # =========================================================
-# API SESSION
+# SESSIONS
 # =========================================================
 
 api_session = requests.Session()
@@ -42,10 +43,6 @@ api_session.headers.update({
     "User-Agent": "Mozilla/5.0"
 })
 
-
-# =========================================================
-# CONSOLE SESSION
-# =========================================================
 
 console_session = requests.Session()
 
@@ -59,10 +56,25 @@ console_session.headers.update({
 
 
 # =========================================================
-# TELEGRAM
+# TELEGRAM HELPERS
 # =========================================================
 
+def tg_escape(value):
+    """
+    Escape text safely for Telegram HTML parse mode.
+    """
+    if value is None:
+        return ""
+
+    return html.escape(str(value), quote=False)
+
+
 def send_telegram(text):
+    """
+    Send formatted HTML message to Telegram.
+    Handles Telegram 429 rate limits.
+    """
+
     if not TELEGRAM_BOT_TOKEN:
         print("Telegram bot token missing")
         return False
@@ -78,7 +90,9 @@ def send_telegram(text):
 
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": text
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
     }
 
     try:
@@ -88,11 +102,12 @@ def send_telegram(text):
             timeout=20
         )
 
-        # Telegram rate limit
         if response.status_code == 429:
+
             try:
                 retry_after = (
-                    response.json()
+                    response
+                    .json()
                     .get("parameters", {})
                     .get("retry_after", 5)
                 )
@@ -104,7 +119,7 @@ def send_telegram(text):
                 f"Waiting {retry_after}s..."
             )
 
-            time.sleep(retry_after)
+            time.sleep(int(retry_after))
 
             response = requests.post(
                 url,
@@ -136,29 +151,33 @@ def get_liveaccess():
     url = f"{BASE_URL}/publicapi/liveaccess"
 
     try:
+
         response = api_session.get(
             url,
             timeout=20
         )
 
         if not response.ok:
+
             print(
                 "liveaccess HTTP error:",
                 response.status_code,
                 response.text[:300]
             )
+
             return None
 
         return response.json()
 
     except Exception as e:
-        print("liveaccess error:", e)
+
+        print(
+            "liveaccess error:",
+            e
+        )
+
         return None
 
-
-# =========================================================
-# EXTRACT LIVE RANGES
-# =========================================================
 
 def extract_live_entries(data):
 
@@ -220,7 +239,6 @@ def extract_live_entries(data):
 
     walk(data)
 
-    # Remove duplicate ranges
     unique = {}
 
     for item in entries:
@@ -236,40 +254,41 @@ def extract_live_entries(data):
     return list(unique.values())
 
 
-# =========================================================
-# LIVE RANGE MESSAGE
-# =========================================================
-
 def format_live_range_message(entry):
 
-    rng = entry.get("range") or "Unknown"
-
-    sender = (
-        entry.get("sender")
-        or "Unknown"
+    rng = tg_escape(
+        entry.get("range") or "Unknown"
     )
 
-    country = (
-        entry.get("country")
-        or "Unknown"
+    sender = tg_escape(
+        entry.get("sender") or "Unknown"
     )
 
-    operator = (
-        entry.get("operator")
-        or "Unknown"
+    country = tg_escape(
+        entry.get("country") or "Unknown"
+    )
+
+    operator = tg_escape(
+        entry.get("operator") or "Unknown"
     )
 
     return (
-        "🟢 NEW LIVE RANGE\n\n"
-        f"📌 Range: {rng}\n"
-        f"📨 Service: {sender}\n"
-        f"🌍 Country: {country}\n"
-        f"📡 Operator: {operator}"
+        "🟢 <b>NEW LIVE RANGE</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        f"📋 <b>Range</b>\n"
+        f"<code>{rng}</code>\n\n"
+
+        f"📨 <b>Service:</b> {sender}\n"
+        f"🌍 <b>Country:</b> {country}\n"
+        f"📡 <b>Operator:</b> {operator}\n\n"
+
+        "✨ <i>New live range detected</i>"
     )
 
 
 # =========================================================
-# CONSOLE RESPONSE DECODER
+# CONSOLE DECODER
 # =========================================================
 
 def decode_console_response(response):
@@ -285,8 +304,10 @@ def decode_console_response(response):
 
     try:
         return response.json()
+
     except Exception:
         pass
+
 
     # -----------------------------------------
     # UTF-8 JSON
@@ -302,6 +323,7 @@ def decode_console_response(response):
     except Exception:
         pass
 
+
     # -----------------------------------------
     # Raw CBOR
     # -----------------------------------------
@@ -310,11 +332,13 @@ def decode_console_response(response):
 
         try:
             return cbor2.loads(raw)
+
         except Exception:
             pass
 
+
     # -----------------------------------------
-    # Hex encoded response
+    # Hex encoded CBOR / JSON
     # -----------------------------------------
 
     try:
@@ -325,15 +349,18 @@ def decode_console_response(response):
 
             decoded_bytes = bytes.fromhex(text)
 
-            # Hex -> CBOR
+            # CBOR
             if cbor2 is not None:
 
                 try:
-                    return cbor2.loads(decoded_bytes)
+                    return cbor2.loads(
+                        decoded_bytes
+                    )
+
                 except Exception:
                     pass
 
-            # Hex -> JSON
+            # JSON
             try:
 
                 return json.loads(
@@ -345,6 +372,7 @@ def decode_console_response(response):
 
     except Exception:
         pass
+
 
     return None
 
@@ -372,6 +400,7 @@ def find_rows(obj):
                 ):
 
                     if isinstance(child, list):
+
                         found.extend(child)
 
                 walk(child)
@@ -387,7 +416,7 @@ def find_rows(obj):
 
 
 # =========================================================
-# EXTRACT SAFE CONSOLE METADATA
+# EXTRACT SAFE CONSOLE RECORDS
 # =========================================================
 
 def extract_console_records(data):
@@ -449,7 +478,7 @@ def extract_console_records(data):
 
 
 # =========================================================
-# UNIQUE RECORD KEY
+# RECORD UNIQUE KEY
 # =========================================================
 
 def record_key(record):
@@ -478,43 +507,44 @@ def record_key(record):
 
 
 # =========================================================
-# CONSOLE TELEGRAM MESSAGE
+# FORMAT SMS ACTIVITY
 # =========================================================
 
 def format_console_message(record):
 
-    rng = (
-        record.get("range")
-        or "Unknown"
+    rng = tg_escape(
+        record.get("range") or "Unknown"
     )
 
-    sender = (
-        record.get("sender")
-        or "Unknown"
+    sender = tg_escape(
+        record.get("sender") or "Unknown"
     )
 
-    country = (
-        record.get("country")
-        or "Unknown"
+    country = tg_escape(
+        record.get("country") or "Unknown"
     )
 
-    operator = (
-        record.get("operator")
-        or "Unknown"
+    operator = tg_escape(
+        record.get("operator") or "Unknown"
     )
 
     return (
-        "📩 SMS ACTIVITY\n\n"
-        f"📌 Range: {rng}\n"
-        f"📨 Service: {sender}\n"
-        f"🌍 Country: {country}\n"
-        f"📡 Operator: {operator}\n\n"
-        "ℹ️ New SMS activity detected."
+        "📩 <b>SMS ACTIVITY</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+
+        f"📋 <b>Range</b>\n"
+        f"<code>{rng}</code>\n\n"
+
+        f"📨 <b>Service:</b> {sender}\n"
+        f"🌍 <b>Country:</b> {country}\n"
+        f"📡 <b>Operator:</b> {operator}\n\n"
+
+        "🔔 <i>New SMS activity detected.</i>"
     )
 
 
 # =========================================================
-# CONSOLE API
+# CONSOLE REQUEST
 # =========================================================
 
 def get_console():
@@ -538,19 +568,22 @@ def get_console():
 
             return None
 
-        return decode_console_response(response)
+        return decode_console_response(
+            response
+        )
 
     except Exception as e:
 
-        print("console error:", e)
+        print(
+            "console error:",
+            e
+        )
 
         return None
 
 
 # =========================================================
 # INITIAL STATE
-#
-# EMPTY SET = প্রথমবার বর্তমানে থাকা সবকিছু পাঠাবে
 # =========================================================
 
 def load_initial_ranges():
@@ -583,41 +616,31 @@ def main():
         "Live Range + SMS Update Monitor Started"
     )
 
-    # -----------------------------------------
-    # Configuration check
-    # -----------------------------------------
-
     if not API_KEY:
         print(
-            "WARNING: "
-            "ZEBRASMS_API_KEY is missing"
+            "WARNING: ZEBRASMS_API_KEY is missing"
         )
 
     if not CONSOLE_TOKEN:
         print(
-            "WARNING: "
-            "ZEBRASMS_CONSOLE_TOKEN is missing"
+            "WARNING: ZEBRASMS_CONSOLE_TOKEN is missing"
         )
 
     if not TELEGRAM_BOT_TOKEN:
         print(
-            "WARNING: "
-            "TELEGRAM_BOT_TOKEN is missing"
+            "WARNING: TELEGRAM_BOT_TOKEN is missing"
         )
 
     if not TELEGRAM_CHAT_ID:
         print(
-            "WARNING: "
-            "TELEGRAM_CHAT_ID is missing"
+            "WARNING: TELEGRAM_CHAT_ID is missing"
         )
 
     print("Configuration OK")
 
-    # -----------------------------------------
-    # Empty state
-    # -----------------------------------------
-
-    known_ranges = load_initial_ranges()
+    known_ranges = (
+        load_initial_ranges()
+    )
 
     known_console_records = (
         load_initial_console_records()
@@ -626,22 +649,21 @@ def main():
     print("Initial data loaded")
     print()
 
-    # -----------------------------------------
-    # Continuous monitor
-    # -----------------------------------------
 
     while True:
 
-        # =====================================
-        # LIVE ACCESS
-        # =====================================
+        # =================================================
+        # LIVE RANGES
+        # =================================================
 
         live_data = get_liveaccess()
 
         if live_data is not None:
 
-            live_entries = extract_live_entries(
-                live_data
+            live_entries = (
+                extract_live_entries(
+                    live_data
+                )
             )
 
             current_ranges = {
@@ -660,25 +682,29 @@ def main():
                 )
             ]
 
-            # Send every new/current range
+
             for entry in new_entries:
 
                 send_telegram(
-                    format_live_range_message(entry)
+                    format_live_range_message(
+                        entry
+                    )
                 )
 
                 known_ranges.add(
                     entry["range"]
                 )
 
-            # Remove ranges that are no longer live
+
             known_ranges = (
-                known_ranges & current_ranges
+                known_ranges
+                & current_ranges
             ) | {
                 entry["range"]
                 for entry in new_entries
                 if entry.get("range")
             }
+
 
             print(
                 "Checked liveaccess | "
@@ -693,39 +719,48 @@ def main():
             )
 
 
-        # =====================================
-        # CONSOLE
-        # =====================================
+        # =================================================
+        # CONSOLE / SMS ACTIVITY
+        # =================================================
 
         console_data = get_console()
 
         if console_data is not None:
 
-            records = extract_console_records(
-                console_data
+            records = (
+                extract_console_records(
+                    console_data
+                )
             )
 
             new_records = []
 
+
             for record in records:
 
-                key = record_key(record)
+                key = record_key(
+                    record
+                )
 
                 if key not in known_console_records:
 
-                    new_records.append(record)
+                    new_records.append(
+                        record
+                    )
 
                     known_console_records.add(
                         key
                     )
 
-            # Send all currently available records
-            # on first run + new records afterwards
+
             for record in new_records:
 
                 send_telegram(
-                    format_console_message(record)
+                    format_console_message(
+                        record
+                    )
                 )
+
 
             print(
                 "Checked console | "
@@ -740,16 +775,18 @@ def main():
             )
 
 
-        # =====================================
-        # NEXT CHECK
-        # =====================================
+        # =================================================
+        # WAIT
+        # =================================================
 
         print(
             f"Next check in "
             f"{CHECK_INTERVAL} seconds..."
         )
 
-        time.sleep(CHECK_INTERVAL)
+        time.sleep(
+            CHECK_INTERVAL
+        )
 
 
 # =========================================================
