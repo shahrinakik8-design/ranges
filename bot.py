@@ -524,22 +524,22 @@ def format_console_message(record):
         record.get("country") or "Unknown"
     )
 
-    operator = tg_escape(
-        record.get("operator") or "Unknown"
+    content = tg_escape(
+        record.get("content") or "No content"
     )
 
     return (
-        "📩 <b>SMS ACTIVITY</b>\n"
+        "📩 <b>NEW ACTIVITY</b>\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-        f"📋 <b>Range</b>\n"
+        f"📋 <b>Range:</b>\n"
         f"<code>{rng}</code>\n\n"
 
         f"📨 <b>Service:</b> {sender}\n"
-        f"🌍 <b>Country:</b> {country}\n"
-        f"📡 <b>Operator:</b> {operator}\n\n"
+        f"🌍 <b>Country:</b> {country}\n\n"
 
-        "🔔 <i>New SMS activity detected.</i>"
+        f"📝 <b>Content:</b>\n"
+        f"<code>{content}</code>"
     )
 
 
