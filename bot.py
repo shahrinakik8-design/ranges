@@ -4,41 +4,28 @@ import json
 import hashlib
 import requests
 
-
-# =========================================================
-# CONFIG
-# =========================================================
-
-API_KEY = os.getenv("ZEBRASMS_API_KEY", "")
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-
 BASE_URL = "https://api.zebrasms.com/api/v1"
 
-CHECK_INTERVAL = 60
-SEND_DELAY = 3
+CHECK_INTERVAL = 30
+SEND_DELAY = 2
 
-
-# =========================================================
-# RANGE INFORMATION
-# =========================================================
+API_KEY = os.getenv("ZEBRASMS_API_KEY")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 RANGE_INFO = {
     "2290163XXX": {
         "service": "Face-Book",
         "country": "Benin 🇧🇯"
     },
-
     "22501XXX": {
         "service": "Face-Book",
         "country": "Ivory Coast 🇨🇮"
     },
-
     "99277XXX": {
         "service": "Face-Book",
         "country": "Tajikistan 🇹🇯"
     },
-
     "26134XXX": {
         "service": "Instagram",
         "country": "Madagascar 🇲🇬"
@@ -46,225 +33,111 @@ RANGE_INFO = {
 }
 
 
-# =========================================================
-# HTTP SESSION
-# =========================================================
-
 session = requests.Session()
 
 session.headers.update({
-    "MAuth": API_KEY,
-    "Accept": "application/json"
+    "MAuth": API_KEY or "",
+    "Accept": "*/*",
+    "User-Agent": "Mozilla/5.0"
 })
 
 
-# =========================================================
-# TELEGRAM
-# =========================================================
-
 def send_telegram(text):
-
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
 
     payload = {
-        "chat_id": CHAT_ID,
+        "chat_id": TELEGRAM_CHAT_ID,
         "text": text
     }
 
-    while True:
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=20
+        )
 
-        try:
-
-            response = session.post(
-                url,
-                json=payload,
-                timeout=20
-            )
-
+        if response.status_code == 429:
             try:
-                data = response.json()
-            except Exception:
-                data = {}
-
-            # -------------------------
-            # SUCCESS
-            # -------------------------
-
-            if data.get("ok"):
-
-                print("Telegram message sent")
-
-                time.sleep(SEND_DELAY)
-
-                return True
-
-            # -------------------------
-            # RATE LIMIT
-            # -------------------------
-
-            if data.get("error_code") == 429:
-
-                retry_after = (
-                    data.get("parameters", {})
-                    .get("retry_after", 5)
-                )
-
-                print(
-                    f"Telegram rate limit. "
-                    f"Waiting {retry_after}s..."
-                )
-
+                retry_after = response.json()["parameters"]["retry_after"]
+                print(f"Telegram rate limited. Waiting {retry_after}s...")
                 time.sleep(retry_after)
+                return send_telegram(text)
+            except Exception:
+                pass
 
-                continue
-
-            # -------------------------
-            # OTHER ERROR
-            # -------------------------
-
+        if response.status_code != 200:
             print(
                 "Telegram error:",
-                data.get("description", data)
+                response.status_code,
+                response.text[:300]
             )
-
             return False
 
-        except requests.RequestException as e:
+        time.sleep(SEND_DELAY)
+        return True
 
-            print(
-                "Telegram connection error:",
-                e
-            )
-
-            time.sleep(5)
-
-        except Exception as e:
-
-            print(
-                "Telegram error:",
-                e
-            )
-
-            time.sleep(5)
+    except Exception as e:
+        print("Telegram exception:", e)
+        return False
 
 
-# =========================================================
-# ZEBRASMS API
-# =========================================================
-
-def api_get(endpoint):
-
-    url = f"{BASE_URL}{endpoint}"
-
+def get_liveaccess():
     try:
-
         response = session.get(
-            url,
+            f"{BASE_URL}/publicapi/liveaccess",
             timeout=20
         )
 
         if response.status_code != 200:
-
             print(
-                f"API HTTP error: "
-                f"{response.status_code}"
+                "liveaccess HTTP error:",
+                response.status_code
             )
+            return []
 
-            return None
+        data = response.json()
 
-        try:
-            data = response.json()
-        except Exception:
+        rows = data.get("data", {}).get("rows", [])
 
-            print("API returned invalid JSON")
+        if not isinstance(rows, list):
+            return []
 
-            return None
-
-        meta = data.get("meta", {})
-
-        if meta.get("code") != 0:
-
-            print(
-                "ZebraSMS API error:",
-                meta
-            )
-
-            return None
-
-        return data
-
-    except requests.RequestException as e:
-
-        print(
-            f"API connection error "
-            f"({endpoint}):",
-            e
-        )
-
-        return None
+        return rows
 
     except Exception as e:
-
-        print(
-            f"API error ({endpoint}):",
-            e
-        )
-
-        return None
-
-
-# =========================================================
-# LIVEACCESS
-# =========================================================
-
-def get_liveaccess():
-
-    data = api_get(
-        "/publicapi/liveaccess"
-    )
-
-    if not data:
+        print("liveaccess error:", e)
         return []
 
-    api_data = data.get("data", {})
 
-    if isinstance(api_data, dict):
+def normalize_range_info(sender, range_value):
+    info = RANGE_INFO.get(range_value)
 
-        rows = api_data.get(
-            "rows",
-            []
-        )
+    if info:
+        return info["service"], info["country"]
 
-        if isinstance(rows, list):
-            return rows
+    sender_lower = str(sender or "").lower()
 
-    if isinstance(api_data, list):
-        return api_data
+    if "facebook" in sender_lower:
+        service = "Face-Book"
+    elif "instagram" in sender_lower:
+        service = "Instagram"
+    else:
+        service = str(sender or "Unknown")
 
-    return []
+    return service, "Unknown"
 
-
-# =========================================================
-# LIVE RANGE EXTRACTION
-# =========================================================
 
 def extract_live_ranges(rows):
-
-    result = set()
+    result = []
 
     for row in rows:
-
         if not isinstance(row, dict):
             continue
 
-        sender = str(
-            row.get("sender", "")
-        ).strip().lower()
+        sender = row.get("sender", "")
 
-        ranges = row.get(
-            "ranges",
-            []
-        )
+        ranges = row.get("ranges", [])
 
         if isinstance(ranges, str):
             ranges = [ranges]
@@ -272,193 +145,173 @@ def extract_live_ranges(rows):
         if not isinstance(ranges, list):
             continue
 
-        for range_name in ranges:
+        for range_value in ranges:
+            range_value = str(range_value)
 
-            range_name = str(
-                range_name
-            ).strip().upper()
-
-            if not range_name:
-                continue
-
-            result.add(
-                (
-                    sender,
-                    range_name
-                )
-            )
+            result.append({
+                "sender": sender,
+                "range": range_value
+            })
 
     return result
 
 
-# =========================================================
-# RANGE INFO
-# =========================================================
+def format_range_message(record):
+    sender = record.get("sender", "")
+    range_value = record.get("range", "")
 
-def get_range_info(sender, range_name):
-
-    # Exact match
-    if range_name in RANGE_INFO:
-
-        return RANGE_INFO[range_name]
-
-    # Unknown range
-    return {
-        "service": sender.title()
-        if sender
-        else "Unknown",
-
-        "country": "Unknown 🌍"
-    }
-
-
-# =========================================================
-# NEW RANGE MESSAGE
-# =========================================================
-
-def format_range_message(
-    sender,
-    range_name
-):
-
-    info = get_range_info(
+    service, country = normalize_range_info(
         sender,
-        range_name
+        range_value
     )
 
     return (
-        "✅ New Active Range ✅\n"
-        f"⚙️ Service: {info['service']}\n"
-        f"🌍 Country: {info['country']}\n"
-        f"📊 Range: {range_name}\n"
-        "📩 SMS update available"
+        "🟢 New Active Range\n\n"
+        f"⚙️ Service: {service}\n"
+        f"🌍 Country: {country}\n"
+        f"📊 Range: {range_value}\n"
+        "\n"
+        "📡 Range is currently active"
     )
 
 
-# =========================================================
-# GETUPDATE
-# =========================================================
+def decode_console_response(response):
+    """
+    /console may return CBOR directly or hexadecimal CBOR.
+    JSON fallback is also supported.
+    """
 
-def get_updates():
+    # 1. Try normal JSON
+    try:
+        return response.json()
+    except Exception:
+        pass
 
-    data = api_get(
-        "/publicapi/getupdate"
-    )
+    # 2. Try CBOR
+    try:
+        import cbor2
 
-    if not data:
+        raw = response.content
+
+        try:
+            return cbor2.loads(raw)
+        except Exception:
+            pass
+
+        # 3. Try hex encoded CBOR
+        text = response.text.strip()
+
+        try:
+            decoded_bytes = bytes.fromhex(text)
+            return cbor2.loads(decoded_bytes)
+        except Exception:
+            pass
+
+    except Exception as e:
+        print("CBOR decode error:", e)
+
+    return None
+
+
+def get_console():
+    try:
+        response = session.get(
+            f"{BASE_URL}/console",
+            timeout=20
+        )
+
+        if response.status_code != 200:
+            print(
+                "console HTTP error:",
+                response.status_code
+            )
+            return None
+
+        return decode_console_response(response)
+
+    except Exception as e:
+        print("console error:", e)
         return None
 
-    return data
+
+def find_rows(obj):
+    """
+    Recursively find a 'rows' list anywhere
+    inside the console response.
+    """
+
+    if isinstance(obj, dict):
+
+        if "rows" in obj and isinstance(obj["rows"], list):
+            return obj["rows"]
+
+        for value in obj.values():
+            result = find_rows(value)
+
+            if result is not None:
+                return result
+
+    elif isinstance(obj, list):
+
+        for item in obj:
+            result = find_rows(item)
+
+            if result is not None:
+                return result
+
+    return None
 
 
-# =========================================================
-# SAFE UPDATE METADATA
-# =========================================================
+def extract_console_records(console_data):
+    rows = find_rows(console_data)
 
-SAFE_FIELDS = {
-    "id",
-    "update_id",
-    "message_id",
-    "range",
-    "sender",
-    "service",
-    "country",
-    "created_at",
-    "timestamp",
-    "time",
-    "date"
-}
-
-
-def safe_value(value):
-
-    if value is None:
-        return ""
-
-    if isinstance(value, (str, int, float, bool)):
-        return str(value)
-
-    return ""
-
-
-def extract_update_records(obj):
+    if not rows:
+        return []
 
     records = []
 
-    def walk(value):
+    for row in rows:
 
-        if isinstance(value, list):
+        if not isinstance(row, dict):
+            continue
 
-            for item in value:
-                walk(item)
+        # Only safe metadata.
+        # IMPORTANT:
+        # message / sms / otp / code / number are never read.
+        record = {
+            "idx": row.get("idx"),
+            "eat_ms": row.get("eat_ms"),
+            "range": row.get("range"),
+            "sender": row.get("sender"),
+            "country": row.get("country"),
+            "operator": row.get("operator")
+        }
 
-            return
+        if not any(
+            value is not None
+            for value in record.values()
+        ):
+            continue
 
-        if not isinstance(value, dict):
-            return
-
-        safe = {}
-
-        for key, val in value.items():
-
-            key_lower = str(
-                key
-            ).lower()
-
-            if key_lower in SAFE_FIELDS:
-
-                cleaned = safe_value(val)
-
-                if cleaned:
-                    safe[key_lower] = cleaned
-
-        # If this object contains useful metadata,
-        # treat it as an update record.
-        if safe:
-
-            records.append(safe)
-
-        # Continue through nested objects.
-        for key, val in value.items():
-
-            if isinstance(
-                val,
-                (dict, list)
-            ):
-
-                walk(val)
-
-    walk(obj)
+        records.append(record)
 
     return records
 
 
-# =========================================================
-# UPDATE KEY
-# =========================================================
+def record_key(record):
+    """
+    Prefer idx because it is the unique console record ID.
+    """
 
-def make_update_key(record):
+    if record.get("idx") is not None:
+        return f"idx:{record['idx']}"
 
-    # Prefer a unique API ID.
-    for field in (
-        "update_id",
-        "message_id",
-        "id"
-    ):
-
-        value = record.get(field)
-
-        if value:
-
-            return (
-                field,
-                value
-            )
-
-    # Otherwise use available safe metadata.
     safe_data = {
-        key: record[key]
-        for key in sorted(record)
+        "eat_ms": record.get("eat_ms"),
+        "range": record.get("range"),
+        "sender": record.get("sender"),
+        "country": record.get("country"),
+        "operator": record.get("operator")
     }
 
     raw = json.dumps(
@@ -467,114 +320,63 @@ def make_update_key(record):
         ensure_ascii=False
     )
 
-    digest = hashlib.sha256(
+    return "hash:" + hashlib.sha256(
         raw.encode("utf-8")
     ).hexdigest()
 
-    return (
-        "hash",
-        digest
-    )
 
+def format_console_message(record):
 
-# =========================================================
-# UPDATE MESSAGE
-# =========================================================
-
-def format_update_message(record):
-
-    sender = record.get(
-        "sender",
-        ""
-    ).strip().lower()
-
-    range_name = record.get(
-        "range",
-        ""
-    ).strip().upper()
-
-    service = record.get(
-        "service",
-        ""
-    ).strip()
-
-    country = record.get(
-        "country",
-        ""
-    ).strip()
-
-    # If API does not directly provide service/country,
-    # use our local range mapping.
-    if range_name:
-
-        info = get_range_info(
-            sender,
-            range_name
-        )
-
-        if not service:
-            service = info["service"]
-
-        if not country:
-            country = info["country"]
-
-    if not service:
-        service = (
-            sender.title()
-            if sender
-            else "Unknown"
-        )
-
-    if not country:
-        country = "Unknown 🌍"
-
-    if range_name:
-
-        return (
-            "✅ New SMS Update ✅\n"
-            f"⚙️ Service: {service}\n"
-            f"🌍 Country: {country}\n"
-            f"📊 Range: {range_name}\n"
-            "📩 New SMS received"
-        )
+    service = record.get("sender") or "Unknown"
+    country = record.get("country") or "Unknown"
+    range_value = record.get("range") or "Unknown"
+    operator = record.get("operator") or "Unknown"
 
     return (
-        "✅ New SMS Update ✅\n"
+        "🔔 New SMS Update\n\n"
         f"⚙️ Service: {service}\n"
         f"🌍 Country: {country}\n"
-        "📩 New SMS received"
+        f"📊 Range: {range_value}\n"
+        f"📡 Operator: {operator}\n"
+        "\n"
+        "📩 SMS received\n"
+        "🔒 Message: ******** MASKED ********"
     )
 
 
-# =========================================================
-# INITIAL UPDATE LOAD
-# =========================================================
-
-def load_initial_updates():
-
-    data = get_updates()
-
-    if data is None:
-
-        print(
-            "Initial getupdate check failed"
-        )
-
-        return set()
-
-    records = extract_update_records(
-        data
-    )
+def load_initial_ranges():
+    rows = get_liveaccess()
+    records = extract_live_ranges(rows)
 
     known = set()
 
     for record in records:
-
-        key = make_update_key(
-            record
+        key = (
+            record["sender"],
+            record["range"]
         )
-
         known.add(key)
+
+    print(
+        f"Loaded {len(known)} existing ranges"
+    )
+
+    return known
+
+
+def load_initial_console():
+    data = get_console()
+
+    if data is None:
+        print("Initial console data unavailable")
+        return set()
+
+    records = extract_console_records(data)
+
+    known = set()
+
+    for record in records:
+        known.add(record_key(record))
 
     print(
         f"Loaded {len(known)} existing SMS updates"
@@ -583,206 +385,124 @@ def load_initial_updates():
     return known
 
 
-# =========================================================
-# MAIN
-# =========================================================
+def check_liveaccess(known_ranges):
+
+    rows = get_liveaccess()
+
+    records = extract_live_ranges(rows)
+
+    new_count = 0
+
+    for record in records:
+
+        key = (
+            record["sender"],
+            record["range"]
+        )
+
+        if key in known_ranges:
+            continue
+
+        known_ranges.add(key)
+
+        message = format_range_message(record)
+
+        if send_telegram(message):
+            new_count += 1
+
+    print(
+        f"Checked liveaccess | "
+        f"{len(records)} ranges | "
+        f"{new_count} new"
+    )
+
+
+def check_console(known_console):
+
+    data = get_console()
+
+    if data is None:
+        print("Checked console | unavailable")
+        return
+
+    records = extract_console_records(data)
+
+    new_count = 0
+
+    for record in records:
+
+        key = record_key(record)
+
+        if key in known_console:
+            continue
+
+        known_console.add(key)
+
+        message = format_console_message(record)
+
+        if send_telegram(message):
+            new_count += 1
+
+    # Prevent unlimited memory growth
+    if len(known_console) > 5000:
+        known_console.clear()
+
+        for record in records:
+            known_console.add(record_key(record))
+
+    print(
+        f"Checked console | "
+        f"{len(records)} updates | "
+        f"{new_count} new"
+    )
+
 
 def main():
 
     print("Starting...")
     print("Live Range + SMS Update Monitor Started")
 
-    # -----------------------------------------------------
-    # CONFIG CHECK
-    # -----------------------------------------------------
-
     if not API_KEY:
-
-        print(
-            "ERROR: ZEBRASMS_API_KEY is missing"
-        )
-
+        print("ERROR: ZEBRASMS_API_KEY is missing")
         return
 
-    if not BOT_TOKEN:
-
-        print(
-            "ERROR: TELEGRAM_BOT_TOKEN is missing"
-        )
-
+    if not TELEGRAM_BOT_TOKEN:
+        print("ERROR: TELEGRAM_BOT_TOKEN is missing")
         return
 
-    if not CHAT_ID:
-
-        print(
-            "ERROR: TELEGRAM_CHAT_ID is missing"
-        )
-
+    if not TELEGRAM_CHAT_ID:
+        print("ERROR: TELEGRAM_CHAT_ID is missing")
         return
 
     print("Configuration OK")
 
-    # -----------------------------------------------------
-    # INITIAL LIVE RANGES
-    # -----------------------------------------------------
+    known_ranges = load_initial_ranges()
+    known_console = load_initial_console()
 
-    initial_rows = get_liveaccess()
-
-    known_ranges = extract_live_ranges(
-        initial_rows
-    )
-
-    print(
-        f"Loaded {len(known_ranges)} existing ranges"
-    )
-
-    # -----------------------------------------------------
-    # INITIAL SMS UPDATES
-    # -----------------------------------------------------
-
-    known_updates = load_initial_updates()
-
-    print(
-        "Initial data loaded"
-    )
-
-    # -----------------------------------------------------
-    # MONITOR
-    # -----------------------------------------------------
+    print("Initial data loaded")
 
     while True:
 
         try:
+            check_liveaccess(known_ranges)
 
-            # =============================================
-            # 1. LIVEACCESS
-            # =============================================
-
-            rows = get_liveaccess()
-
-            current_ranges = extract_live_ranges(
-                rows
-            )
-
-            new_ranges = (
-                current_ranges
-                - known_ranges
-            )
-
-            for sender, range_name in sorted(
-                new_ranges
-            ):
-
-                print(
-                    f"New range detected: "
-                    f"{sender} -> {range_name}"
-                )
-
-                message = format_range_message(
-                    sender,
-                    range_name
-                )
-
-                send_telegram(
-                    message
-                )
-
-            known_ranges.update(
-                current_ranges
-            )
+            check_console(known_console)
 
             print(
-                f"Checked liveaccess | "
-                f"{len(current_ranges)} ranges | "
-                f"{len(new_ranges)} new"
+                f"Next check in "
+                f"{CHECK_INTERVAL} seconds..."
             )
 
-            # =============================================
-            # 2. GETUPDATE
-            # =============================================
+            time.sleep(CHECK_INTERVAL)
 
-            update_data = get_updates()
-
-            if update_data is not None:
-
-                update_records = extract_update_records(
-                    update_data
-                )
-
-                current_updates = set()
-
-                new_update_records = []
-
-                for record in update_records:
-
-                    key = make_update_key(
-                        record
-                    )
-
-                    current_updates.add(
-                        key
-                    )
-
-                    if key not in known_updates:
-
-                        new_update_records.append(
-                            record
-                        )
-
-                # -----------------------------------------
-                # SEND NEW UPDATE NOTIFICATIONS
-                # -----------------------------------------
-
-                for record in new_update_records:
-
-                    print(
-                        "New SMS update detected"
-                    )
-
-                    message = format_update_message(
-                        record
-                    )
-
-                    send_telegram(
-                        message
-                    )
-
-                known_updates.update(
-                    current_updates
-                )
-
-                print(
-                    f"Checked getupdate | "
-                    f"{len(current_updates)} updates | "
-                    f"{len(new_update_records)} new"
-                )
-
-            else:
-
-                print(
-                    "Checked getupdate | API unavailable"
-                )
+        except KeyboardInterrupt:
+            print("Bot stopped")
+            break
 
         except Exception as e:
+            print("Main loop error:", e)
+            time.sleep(10)
 
-            print(
-                "Main loop error:",
-                e
-            )
-
-        print(
-            f"Next check in "
-            f"{CHECK_INTERVAL} seconds..."
-        )
-
-        time.sleep(
-            CHECK_INTERVAL
-        )
-
-
-# =========================================================
-# START
-# =========================================================
 
 if __name__ == "__main__":
     main()
