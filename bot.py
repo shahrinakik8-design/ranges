@@ -109,7 +109,7 @@ def send_telegram(text):
         ]
     ]
 }
-
+    }
     try:
         response = requests.post(
             url,
