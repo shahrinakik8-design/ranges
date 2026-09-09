@@ -438,7 +438,7 @@ def extract_console_records(data):
             ),
 
             "at_ms": (
-                row.get("eat_ms")
+                row.get("at_ms")
                 or row.get("timestamp")
                 or row.get("created_at")
             ),
