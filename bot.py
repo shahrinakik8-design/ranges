@@ -585,7 +585,7 @@ def format_console_message(record):
         f"🌍 <b>Country:</b> {country}\n"
         f"📡 <b>Operator:</b> {operator}\n"
         f"🕒 <b>Time:</b> <code>{time_text}</code>\n"
-        f"🕒 <b>Message:</b> <code>{message}</code>"
+        f"📨 <b>Message:</b> <code>{message}</code>"
     )
 
 # =========================================================
