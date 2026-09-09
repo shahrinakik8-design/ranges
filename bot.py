@@ -497,6 +497,7 @@ def record_key(record):
         "sender": record.get("sender"),
         "country": record.get("country"),
         "operator": record.get("operator")
+        "message": record.get("message"),
     }
 
     raw = json.dumps(
@@ -513,6 +514,34 @@ def record_key(record):
 # =========================================================
 # FORMAT SMS ACTIVITY
 # =========================================================
+
+from datetime import datetime, timezone
+
+
+def format_time_ms(value):
+
+    try:
+        if value is None:
+            return "Unknown"
+
+        timestamp = int(value) / 1000
+
+        dt = datetime.fromtimestamp(
+            timestamp,
+            tz=timezone.utc
+        )
+
+        return dt.strftime(
+            "%Y-%m-%d %H:%M:%S UTC"
+        )
+
+    except (
+        TypeError,
+        ValueError,
+        OverflowError
+    ):
+        return "Unknown"
+
 
 def format_console_message(record):
 
@@ -532,8 +561,10 @@ def format_console_message(record):
         record.get("operator") or "Unknown"
     )
 
-    at_ms = tg_escape(
-        str(record.get("at_ms") or "Unknown")
+    time_text = tg_escape(
+        format_time_ms(
+            record.get("at_ms")
+        )
     )
 
     return (
@@ -546,7 +577,7 @@ def format_console_message(record):
         f"📨 <b>Service:</b> {sender}\n"
         f"🌍 <b>Country:</b> {country}\n"
         f"📡 <b>Operator:</b> {operator}\n"
-        f"🕒 <b>Time:</b> <code>{at_ms}</code>"
+        f"🕒 <b>Time:</b> <code>{time_text}</code>"
     )
 
 # =========================================================
