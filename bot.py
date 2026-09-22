@@ -225,6 +225,10 @@ def extract_live_entries(data):
                             obj.get("operator")
                             or obj.get("network")
                             or ""
+                        ),
+                        "message": (
+                            obj.get("message")
+                            or ""
                         )
                     })
 
@@ -245,12 +249,12 @@ def extract_live_entries(data):
                 or value.isdigit()
             ):
 
-                 entries.append({
-            "range": obj.get("range") or "",
-            "sender": obj.get("sender") or "",
-            "country": obj.get("country") or "",
-            "operator": obj.get("operator") or "",
-            "message": obj.get("message") or ""
+                entries.append({
+                    "range": value,
+                    "sender": "",
+                    "country": "",
+                    "operator": "",
+                    "message": ""
                 })
 
     walk(data)
